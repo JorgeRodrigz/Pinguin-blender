@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Pinguin",
     "author": "Jorge Rodriguez <jorgeandresarq+dev@gmail.com>",
-    "version": (3, 1, 1),
+    "version": (3, 2, 0),
     "blender": (2, 80, 0),
     "location": "Operator Search",
     "description": "Takes cutout images(png format) and turns them into a mesh in the 3D Space",
@@ -52,7 +52,7 @@ class PinguinProperties(bpy.types.PropertyGroup):
 
     pinguin_folder :  bpy.props.StringProperty(
         subtype='DIR_PATH',
-        name='Folder',
+        name='',
         description = "Folder where cut-out images are located, only images in .png format will be converted", 
         default="Cutouts directory"
         )
@@ -65,7 +65,7 @@ class PinguinProperties(bpy.types.PropertyGroup):
         )
     
     pinguin_vertical_orient : bpy.props.BoolProperty(
-        name = "Orient Vertical", 
+        name = "Vertical", 
         description="Toogle to stand up the meshes",
         default=True
         )
@@ -78,6 +78,13 @@ class PinguinProperties(bpy.types.PropertyGroup):
         options = {"ENUM_FLAG"},
         default = {"SIMPLE"}
         )
+    
+    pinguin_face_target_object : bpy.props.PointerProperty(
+        name = "Target",
+        description = "Set the contour search algorithm between a fast one or a presice one",
+        options={'ANIMATABLE'},
+        type=bpy.types.Object,
+    )
 
 class MESH_OT_pinguin(bpy.types.Operator):
     """Converts some png cutouts into a mesh"""
@@ -97,7 +104,6 @@ class MESH_OT_pinguin(bpy.types.Operator):
 
         proxie_collection = "proxie_collection_pinguin"
         final_collection = "Pinguin-Cutout to Mesh"   
-       
         opacity_suffix = "_opc"
         vector_suffix = "_poly"
 
@@ -297,6 +303,41 @@ class MESH_OT_pinguin(bpy.types.Operator):
         print(f"\nElapsed time: {elapsed_time} seconds 🐧") 
         return{"FINISHED"}
 
+class TRANSFORM_OT_face_towards(bpy.types.Operator):
+    """Face cutouts towards an object"""
+    bl_idname = "transform.face_towards"
+    bl_label = "Face Towards"
+    
+    def execute(self, context):
+        
+        #Get target object
+        target_object = context.scene.my_tool.pinguin_face_target_object
+        target_object_location = target_object.location
+        
+        # Get all selected objects
+        selected_objects = bpy.context.selected_objects
+
+
+        for obj in selected_objects:
+            bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+            obj_location = obj.location
+            obj_normal_vector = get_first_face_normal(obj)
+            obj_target_vector = target_object_location - obj_location
+
+            ### Get rotation angles
+            xy_angle_radians, tilt_angle_radians = get_align_angle(obj_normal_vector, obj_target_vector, tilt = False)
+            print (math.degrees(xy_angle_radians))
+        
+            # Create an Euler rotation object
+            rotation_euler = obj.rotation_euler
+            # Set the rotation in the XY plane
+            rotation_euler.rotate_axis('Z', xy_angle_radians)
+            # Apply the rotation
+            obj.rotation_euler = rotation_euler
+            
+
+        return{"FINISHED"}
+    
 class VIEW_PT_pinguin(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -313,14 +354,34 @@ class VIEW_PT_pinguin(bpy.types.Panel):
         col.scale_y = 2.0 
        
         col = self.layout.column(align=True)
-        col.prop(context.scene.my_tool, "pinguin_folder")
+        row = col.row(align=False)
+        row.prop(context.scene.my_tool, "pinguin_folder")
+        row.scale_x = .5
+        row.prop(context.scene.my_tool, "pinguin_vertical_orient")
 
         col = self.layout.column(align=True)
-        col.prop(context.scene.my_tool, "pinguin_mesh_height")    
-        col.prop(context.scene.my_tool, "pinguin_vertical_orient", toggle = 1)
-        row = col.row(align=True)
+        col.prop(context.scene.my_tool, "pinguin_mesh_height")
+        row = col.row(align=True)    
         row.prop(context.scene.my_tool, "pinguin_cv_algorithm")
+
+class VIEW_PT_facetowards(bpy.types.Panel):
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Pinguin"
+    bl_label = "Face Towards"
+    
+    def draw(self, context):
+        col = self.layout.column()
         
+        #Execute Button
+        col.operator("transform.face_towards",
+            text="Face Towards",
+            icon="LIGHT_AREA")
+        col.scale_y = 2.0 
+        
+        col = self.layout.column(align=True)
+        col.prop(context.scene.my_tool, "pinguin_face_target_object",   text="")
+
 ### Here all the custom functions for the main program
 ### def_returns list of pngs in folder
 def image_png_paths(dir):
@@ -714,18 +775,77 @@ def organize_objects(collection_objs):
             x_location = ox_location  
             number_in_row = 0
 
-### Blender_ Register and Unregister Classes
+### def_ gets the firs indexd normal of any given mesh
+def get_first_face_normal(obj):
+    if obj.type == 'MESH':
+        mesh = obj.data
+    # Ensure the mesh has polygons
+    if mesh.polygons:
+        # Get the first face (polygon)
+        face = mesh.polygons[0]
+        # Get the normal vector of the face
+        normal = face.normal
+        # Print the normal vector
+        return normal
     
+    # Implement camera facing
+    if obj.type == "CAMERA":
+        print("camera facing not yet implemented, coming soon")
+    
+
+### def 
+def get_align_angle(normal_vector, target_vector, tilt = False):
+    
+    x_normal, y_normal, z_normal = normal_vector
+    x_target, y_target, z_target = target_vector
+    
+### Calculate the rotation angle using the dot product
+    # Calculate the dot product of the vectors in the XY plane
+    dot_product = x_normal * x_target + y_normal * y_target
+    # Calculate the magnitudes of the projected vectors 
+    magnitude1 = math.sqrt(x_normal ** 2 + y_normal ** 2)
+    magnitude2 = math.sqrt(x_target** 2 + y_target ** 2)
+    # Calculate the cosine of the angle using the dot product and magnitudes
+    cos_angle = dot_product / (magnitude1 * magnitude2)
+    # Calculate the angle using the arccosine function
+    xy_angle_radians = math.acos(cos_angle)
+    
+### Calculate the direction of rotation using the atan2 of the angles
+    cross_product = x_normal * y_target - y_normal * x_target
+    
+    print(cross_product)
+    if cross_product < 0:
+        xy_angle_radians *= -1   
+    
+
+### Calculate tilt angle
+    tilt_angle_radians = 0
+    if tilt == True:
+        pass
+        # Solve this shite, learn bout quaternions biiiitch
+    
+    return xy_angle_radians, tilt_angle_radians
+    
+    
+    
+    
+
+    
+### Blender_ Register and Unregister Classes   
 def register():
     bpy.utils.register_class(MESH_OT_pinguin)
+    bpy.utils.register_class(TRANSFORM_OT_face_towards)
     bpy.utils.register_class(VIEW_PT_pinguin)
+    bpy.utils.register_class(VIEW_PT_facetowards)
     bpy.utils.register_class(PinguinProperties)
-
+    
     bpy.types.Scene.my_tool = bpy.props.PointerProperty(type = PinguinProperties)
     
 def unregister():
     bpy.utils.unregister_class(MESH_OT_pinguin)
+    bpy.utils.unregister_class(TRANSFORM_OT_face_towards)
     bpy.utils.unregister_class(VIEW_PT_pinguin)
+    bpy.utils.unregister_class(VIEW_PT_facetowards)
     bpy.utils.unregister_class(PinguinProperties)   
 
     del bpy.types.Scene.my_tool
