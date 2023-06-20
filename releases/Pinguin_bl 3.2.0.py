@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Pinguin",
     "author": "Jorge Rodriguez <jorgeandresarq+dev@gmail.com>",
-    "version": (3, 2, 4),
+    "version": (3, 2, 0),
     "blender": (2, 80, 0),
     "location": "Operator Search",
     "description": "Takes cutout images(png format) and turns them into a mesh in the 3D Space",
@@ -45,6 +45,7 @@ try:
 except:
     subprocess.check_call([sys.executable, '-m', 'pip', 'install',"numpy"])
     import numpy as np 
+    
 
 
 class PinguinProperties(bpy.types.PropertyGroup):
@@ -90,7 +91,6 @@ class PinguinProperties(bpy.types.PropertyGroup):
         description="Enable tilt in alignment",
         default=False
         )
-
 class MESH_OT_pinguin_create(bpy.types.Operator):
     """Converts some png cutouts into a mesh"""
     bl_idname = "mesh.png_to_mesh"
@@ -315,9 +315,12 @@ class TRANSFORM_OT_face_towards(bpy.types.Operator):
     
     def execute(self, context):
         
+        tilt_bool = context.scene.my_tool.pinguin_face_target_tilt
+        
         # 1 Get target object
         target_object = context.scene.my_tool.pinguin_face_target_object
         target_object_location = target_object.location
+        
         # 2 Get all selected objects
         selected_objects = bpy.context.selected_objects
 
@@ -327,80 +330,87 @@ class TRANSFORM_OT_face_towards(bpy.types.Operator):
             obj_location = obj.location
             obj_normal_vector = get_first_face_normal(obj)
             obj_target_vector = target_object_location - obj_location
-            
-            ### Get rotation angles
-            xy_angle_radians, tilt_angle_radians, azimut_angle_radians = get_align_angle(obj_normal_vector, obj_target_vector)
 
+            ### Get rotation angles
+            xy_angle_radians, tilt_angle_radians = get_align_angle(obj_normal_vector, obj_target_vector)
+        
         # 3 Rotate on xy plane  
-            # set default rotation mode in case Tilt was enabled and then disabled
-            obj.rotation_mode ='XYZ'
-            # Create an Euler rotation object
-            rotation_euler = obj.rotation_euler
-            # Set the rotation in the XY plane
-            rotation_euler.rotate_axis('Z', xy_angle_radians)
-            # Apply the rotation
-            obj.rotation_euler = rotation_euler
-            bpy.ops.object.transform_apply(location=False, rotation=True, scale=False) 
+            if True:
+                # set default rotation mode in case Tilt was enabled and then disabled
+                obj.rotation_mode ='XYZ'
+                # Create an Euler rotation object
+                rotation_euler = obj.rotation_euler
+                # Set the rotation in the XY plane
+                rotation_euler.rotate_axis('Z', xy_angle_radians)
+                # Apply the rotation
+                obj.rotation_euler = rotation_euler
             
-        return{"FINISHED"}
-
-class TRANSFORM_OT_face_towards_tilt(bpy.types.Operator):
-    """Face cutouts towards an object"""
-    bl_idname = "transform.face_towards_tilt"
-    bl_label = "Tilt"
-        
-    def execute(self, context):
-        
-        tilt_bool = context.scene.my_tool.pinguin_face_target_tilt
-        # 1 Get target object        
-        target_object = context.scene.my_tool.pinguin_face_target_object
-        target_object_location = target_object.location
-        # 2 Get all selected objects
-        selected_objects = bpy.context.selected_objects
-
-        for obj in selected_objects:
+            reset_world_matrix(obj)
+            """   
+###_____FUNCIONA BIEN HASTA ACA____ 
+            print("--------------initial--------------","\n",
+                "matrix world:", obj.matrix_world, "\n",
+                "matrix local:", obj.matrix_local, "\n",
+                "-----------------------------------", "\n")
             
-            bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-            # 3 Get object location
-            obj_location = obj.location
-            obj_normal_vector = get_first_face_normal(obj)
-            obj_target_vector = target_object_location - obj_location
-        
-            ### Get rotation angles
-            xy_angle_radians, tilt_angle_radians, azimut_angle_radians = get_align_angle(obj_normal_vector, obj_target_vector)
-            ### Correct Azimut angle if is below object
-            if obj_location[2] < target_object_location [2]:
-                azimut_angle_radians *= -1
-                tilt_angle_radians *= -1
+            reset_world_matrix(obj)
             
-            print("_-_------_----_----_-----___--_-_-----","\n"
-                , "xy_angle: ", math.degrees(xy_angle_radians), "\n",
-                "azimut_angle: ", math.degrees(azimut_angle_radians), "\n",
-                "tilt angle: ", math.degrees(tilt_angle_radians), "\n")
+            ###_____FUNCIONA BIEN HASTA ACA____ 
+            print("---------------final---------------","\n",
+                "matrix world:", obj.matrix_world, "\n",
+                "matrix local:", obj.matrix_local, "\n",
+                "-----------------------------------", "\n")
+            """
             
-
-            ### Evaluate if it is facing backwards
-            print(f"Azimut::{math.degrees(azimut_angle_radians)} + Tilt::{math.degrees(tilt_angle_radians)} = {abs(math.degrees(azimut_angle_radians) + math.degrees(tilt_angle_radians))}")
-            
-            if abs(xy_angle_radians) > (math.pi/2):
-                print("is facing backwards")
-                print("tar", math.degrees(tilt_angle_radians))
-                tilt_angle_radians_after_xy_alignment = ((math.pi) + (2 * abs(azimut_angle_radians)) - abs(tilt_angle_radians))
-                print("taraxya", math.degrees(tilt_angle_radians_after_xy_alignment))
-            
-            # 4 Rotate tilt  using quaternions
-            
-            ### Get rotation axis
-            ### Desde aca podria ser copiado
-            otv_x, otv_y, otv_z = obj_target_vector
-            obj_target_vector_xyz = [otv_x, otv_y, otv_z ]
-            obj_target_vector_xy = [otv_x, otv_y, 0]
-            
-            rotation_axis_tilt = cross_product_3d(obj_target_vector_xyz, obj_target_vector_xy)
-            
-        if True: 
-            print("Tilt Working")  
+        # 4 Rotate tilt  using quaternions
+            if tilt_bool == True: 
+                # Get Initial Position
+                obj_normal_vector_updated = get_first_face_normal(obj)
+                x_normal_u, y_normal_u, z_normal_u = obj_normal_vector_updated
+                q_rotation_axis = (y_normal_u, (-1 * x_normal_u), 0)
+                # Normalize rotation axis for control purposes
+                nor_q_rotation_axis = normalize_vector(q_rotation_axis)
                 
+                """
+                print(f" object_normal: {round(obj_normal_vector_updated[0], 3)} , {round(obj_normal_vector_updated[1], 3)} , {round(obj_normal_vector_updated[2], 3)}", "\n",
+                        f"rotation axis: {round(q_rotation_axis[0], 3)} , {round(q_rotation_axis[1], 3)} , {round(q_rotation_axis[2], 3)}(null)", "\n",
+                        f"normalized axis:{round(nor_q_rotation_axis[0], 3)} , {round(nor_q_rotation_axis[1], 3)} , 0") ### Apuesto que esta mierda esta oscilando, sii estaba oscilando igual no deberia ser problema si ejecuto bien la cosa
+                """
+        
+        # 5 Manage tilt angle rotation direction- probablemente meter esto dentro de el condicional #5
+                # Get heigth of both objects
+                ob_loc_z = obj_location[2]
+                tarob_loc_z = target_object_location[2]
+                
+                # Normalize facing vector and Aligment Vector
+                obj_target_vector_normalized = normalize_vector(obj_target_vector)
+                obj_normal_vector_updated_normalized = normalize_vector(obj_normal_vector_updated)
+                
+                # Get Z component of vectors
+                print("otv_norm:" , obj_target_vector_normalized[2])
+                print("onv_norm:" , obj_normal_vector_updated_normalized[2])
+                
+                otv_norm_z = obj_target_vector_normalized[2]
+                onv_norm_z = obj_normal_vector_updated_normalized[2]
+                
+                # Condition to declare the tilt rotation direction
+                if onv_norm_z > otv_norm_z:
+                    tilt_angle_radians *= -1
+                print("\n","tilt angle corrected: ", math.degrees(tilt_angle_radians))    
+                
+                
+                ### Establecer la rotacion
+                if True:
+                    angle = 10
+                #axis = (1, 0, 0)
+        # 6 Tilt object
+                rotation_quaternion = Quaternion(q_rotation_axis, math.radians(angle))
+
+                obj.rotation_mode = 'QUATERNION'
+                obj.rotation_quaternion = rotation_quaternion
+                bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+
+                                
         return{"FINISHED"}
     
 class VIEW_PT_pinguin_create(bpy.types.Panel):
@@ -436,19 +446,13 @@ class VIEW_PT_facetowards(bpy.types.Panel):
     bl_label = "Face Towards"
     
     def draw(self, context):
-        col = self.layout.column(align=True)
-        col.scale_y = 2.0
+        col = self.layout.column()
+        
         #Execute Button
         col.operator("transform.face_towards",
             text="Face Towards",
             icon="LIGHT_AREA")
-        
-        col = self.layout.column(align=True)
-        col.scale_y = 1.0
-        col.operator("transform.face_towards_tilt",
-            text="Tilt",
-            icon="DRIVER_ROTATIONAL_DIFFERENCE")
-        
+        col.scale_y = 2.0 
         
         col = self.layout.column(align=True)
         row = col.row(align=False)
@@ -456,6 +460,7 @@ class VIEW_PT_facetowards(bpy.types.Panel):
         row.scale_x = .4
         row.prop(context.scene.my_tool, "pinguin_face_target_tilt",   text="Tilt")
         
+
 ### Here all the custom functions for the main program
 ### def_returns list of pngs in folder
 def image_png_paths(dir):
@@ -703,7 +708,7 @@ def mesh_from_contours_info(verts_set = [], edges_set = [], extent_set = [],mesh
     if len(object_set) > 1:
         bpy.ops.object.join()
 
-    
+     
     ### Face from contour edges
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.editmode_toggle()
@@ -736,8 +741,8 @@ def mesh_from_contours_info(verts_set = [], edges_set = [], extent_set = [],mesh
     x, y, z = np.array([v.co for v in bm.verts]).T
     S = Matrix.Diagonal(
         ( 1 / (x.max() - x.min()),
-        1 / (y.max() - y.min()))
-        )
+          1 / (y.max() - y.min()))
+          )
     uv_layer = bm.loops.layers.uv.verify()
     
     # adjust uv coordinates
@@ -835,7 +840,7 @@ def organize_objects(collection_objs):
         
     x_len = max(x_dim_list_width)
     y_len = max(y_dim_list_height)
-    
+   
     #Moves each object to a position in the array  
     for obj in collection_objs.objects:
         
@@ -871,8 +876,8 @@ def get_align_angle(normal_vector, target_vector):
     
     x_normal, y_normal, z_normal = normal_vector
     x_target, y_target, z_target = target_vector
-
-### 1.1 Calculate the rotation angle using the dot product
+    
+### Calculate the rotation angle using the dot product
     # Calculate the dot product of the vectors in the XY plane
     dot_product = x_normal * x_target + y_normal * y_target
     # Calculate the magnitudes of the projected vectors 
@@ -880,109 +885,30 @@ def get_align_angle(normal_vector, target_vector):
     magnitude2 = math.sqrt(x_target** 2 + y_target ** 2)
     # Calculate the cosine of the angle using the dot product and magnitudes
     cos_angle = dot_product / (magnitude1 * magnitude2)
-    # Catch oput of range error
-    if cos_angle < -1:
-        cos_angle = -1
-    elif cos_angle > 1:
-        cos_angle = 1
     # Calculate the angle using the arccosine function
-    xy_angle_radians = math.acos(cos_angle)    
+    xy_angle_radians = math.acos(cos_angle)
     
-### 1.2 Calculate the direction of rotation using the cross product sign
+### Calculate the direction of rotation using the cross product sign
     cross_product = x_normal * y_target - y_normal * x_target
     if cross_product < 0:
         xy_angle_radians *= -1   
     
-### 2.1Calculate Azimut (angle)
-    # Calculate the dot product of the vectors in the XY plane
-    dot_product_azimut = x_target * x_target + y_target * y_target + z_target * 0
-    # Calculate the magnitudes of the projected vectors 
-    magnitude1_azimut = math.sqrt(x_target ** 2 + y_target ** 2 + z_target **2)
-    magnitude2_azimut = math.sqrt(x_target ** 2 + y_target ** 2)
-    # Calculate the cosine of the angle using the dot product and magnitudes
-    cos_angle_azimut = dot_product_azimut / (magnitude1_azimut * magnitude2_azimut)
-    # Catch oput of range error
-    if cos_angle_azimut < -1:
-        cos_angle_azimut = -1
-    elif cos_angle_azimut > 1:
-        cos_angle_azimut = 1
-    azimut_angle_radians = math.acos(cos_angle_azimut)
-
-### 3.1 Project normal vector into target vector plane
-    # Construct vectors
-    target_vector__xy = [target_vector[0], target_vector[1], 0]
-    #reformat vectors
-    normal_vector = [x_normal, y_normal, z_normal] 
-    target_vector = [x_target, y_target, z_target]
-
-    ### project
-    normal_vector_onto_target_plane = project_vector_onto_plane(normal_vector, target_vector, target_vector__xy)
 ### Calculate tilt angle
 # Solve this shite, learn bout quaternions
 # 3Blue1Brown on quaternions: https://www.youtube.com/watch?v=zjMuIxRvygQ&t=353s
-    
-    x_nvotp, y_nvotp, z_nvotp = normal_vector_onto_target_plane
+
     # Calculate the dot product of the vectors
-    dot_product_tilt = x_nvotp * x_target + y_nvotp * y_target + z_nvotp * z_target
+    dot_product_tilt = x_normal * x_target + y_normal * y_target + z_normal * z_target
     # Calculate the magnitudes of the projected vectors 
-    magnitude1_tilt = math.sqrt(x_nvotp ** 2 + y_nvotp ** 2 + z_nvotp ** 2)
+    magnitude1_tilt = math.sqrt(x_normal ** 2 + y_normal ** 2 + z_normal ** 2)
     magnitude2_tilt = math.sqrt(x_target** 2 + y_target ** 2 + z_target ** 2)
     # Calculate the cosine of the angle using the dot product and magnitudes
     cos_angle_tilt = dot_product_tilt / (magnitude1_tilt * magnitude2_tilt)
-        # Catch oput of range error
-    if cos_angle_tilt < -1:
-        cos_angle_tilt = -1
-    elif cos_angle_tilt > 1:
-        cos_angle_tilt = 1
     # Calculate the angle using the arccosine function
     tilt_angle_radians = math.acos(cos_angle_tilt)
     
-    return xy_angle_radians, tilt_angle_radians, azimut_angle_radians
+    return xy_angle_radians, tilt_angle_radians
     
-    
-
-def project_vector_onto_plane(vector_to_project, vector1, vector2):
-
-    # Calculate the normal vector of the plane
-    normal_vector = cross_product_3d(vector1, vector2)
-    # Normalize the normal vector
-    normal_vector_normalized = normalize_vector(normal_vector)
-    
-    dot_product_proj = dot_product(vector_to_project, normal_vector_normalized)
-    #Projected vector = a - dot(a, n) * n
-    projected_vector = []
-    for i in range(len(vector_to_project)): 
-        projected_vector.append(vector_to_project[i] - dot_product_proj * normal_vector_normalized[i])
-        
-    return projected_vector
-
-def cross_product_3d(vector1, vector2):
-    
-    #### algo oscuro esta pasando aca
-    """
-    print( f"x = {vector1[1]} * {vector2[2]} - {vector1[2]} * {vector2[1]}")
-    print( f"y = {vector1[2]} * {vector2[0]} - {vector1[0]} * {vector2[2]}")
-    print( f"z = {vector1[0]} * {vector2[1]} - {vector1[1]} * {vector2[0]}")
-    """
-    x = vector1[1] * vector2[2] - vector1[2] * vector2[1]
-    y = vector1[2] * vector2[0] - vector1[0] * vector2[2]
-    z = vector1[0] * vector2[1] - vector1[1] * vector2[0]
-    return [x, y, z]
-
-def normalize_vector(vector):
-    x, y, z = vector
-    magnitude = math.sqrt(x**2 + y**2 + z**2)
-    normalized_vector = (x / magnitude, y / magnitude, z / magnitude)
-    return normalized_vector
-
-def dot_product(vector1, vector2):
-    if len(vector1) != len(vector2):
-        raise ValueError("Both vectors must have same number of components. dot_product()")
-    result = 0
-    for i in range(3):
-        result += vector1[i] * vector2[i]
-    return result
-
 def reset_world_matrix(obj):
     
     print("reseting")
@@ -999,11 +925,17 @@ def reset_world_matrix(obj):
     ### Return object to original location
     obj.location = (obj_x, obj_y, obj_z)
 
+### def_Para normalizar vectores duh    
+def normalize_vector(vector):
+    x, y, z = vector
+    magnitude = math.sqrt(x**2 + y**2 + z**2)
+    normalized_vector = (x / magnitude, y / magnitude, z / magnitude)
+    return normalized_vector
+
 ### Blender_ Register and Unregister Classes   
 def register():
     bpy.utils.register_class(MESH_OT_pinguin_create)
     bpy.utils.register_class(TRANSFORM_OT_face_towards)
-    bpy.utils.register_class(TRANSFORM_OT_face_towards_tilt)
     bpy.utils.register_class(VIEW_PT_pinguin_create)
     bpy.utils.register_class(VIEW_PT_facetowards)
     bpy.utils.register_class(PinguinProperties)
@@ -1013,7 +945,6 @@ def register():
 def unregister():
     bpy.utils.unregister_class(MESH_OT_pinguin_create)
     bpy.utils.unregister_class(TRANSFORM_OT_face_towards)
-    bpy.utils.unregister_class(TRANSFORM_OT_face_towards_tilt)
     bpy.utils.unregister_class(VIEW_PT_pinguin_create)
     bpy.utils.unregister_class(VIEW_PT_facetowards)
     bpy.utils.unregister_class(PinguinProperties)   
