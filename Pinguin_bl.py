@@ -365,8 +365,12 @@ class TRANSFORM_OT_face_towards_tilt(bpy.types.Operator):
             obj_location = obj.location
             obj_normal_vector = get_first_face_normal(obj)
             obj_target_vector = target_object_location - obj_location
-        
+            ### Formating the object targer vector into a list
+            otv_x, otv_y, otv_z = obj_target_vector
+            obj_target_vector_xyz = [otv_x, otv_y, otv_z]
+            obj_target_vector_xy = [otv_x, otv_y, 0]
             ### Get rotation angles
+            # *the tilt_angle_radians (this is projected in the rotation plane)
             xy_angle_radians, tilt_angle_radians, azimut_angle_radians = get_align_angle(obj_normal_vector, obj_target_vector)
             ### Correct Azimut angle if is below object
             if obj_location[2] < target_object_location [2]:
@@ -385,16 +389,35 @@ class TRANSFORM_OT_face_towards_tilt(bpy.types.Operator):
             if abs(xy_angle_radians) > (math.pi/2):
                 print("is facing backwards")
                 print("tar", math.degrees(tilt_angle_radians))
+            ## check rotation direction to tilt angle to calculate the tilt angle in the range [0,360] currently [0,180] because of the dot product/cos_angle
+                print("obj_target_vector",obj_target_vector_xyz)
+                obj_target_vector_flipped_normalized = normalize_vector(flip_vector(obj_target_vector_xyz))
+            ## Compare z components of the obj_target_vector_flipped_normalized vs the object normal vector projected (this is projected in the rotation plane)
+                
+                projected_obj_normal_vector_onto_target_plane = normalize_vector(project_vector_onto_plane(obj_normal_vector,obj_target_vector_xyz, obj_target_vector_xy))
+                z_tar = projected_obj_normal_vector_onto_target_plane[2]
+                z_otvfn = obj_target_vector_flipped_normalized[2]
+                print("z_tar", z_tar, "z_otvfn", z_otvfn)
+            
+                if abs(z_otvfn) > abs(z_tar):
+                # Transform axis to a 360 degree rotation format
+                    print("wheee have to format the angel wheee: ",math.degrees(tilt_angle_radians))
+                    if tilt_angle_radians < 0:
+                        tilt_angle_radians = (-2*math.pi) - tilt_angle_radians
+                    elif tilt_angle_radians > 0:
+                        tilt_angle_radians = (2*math.pi) - tilt_angle_radians
+                    print("now formated", math.degrees(tilt_angle_radians))
+                
+                # Correct rotation direction 
                 tilt_angle_radians_after_xy_alignment = ((math.pi) + (2 * abs(azimut_angle_radians)) - abs(tilt_angle_radians))
                 print("taraxya", math.degrees(tilt_angle_radians_after_xy_alignment))
-            
+                
             # 4 Rotate tilt  using quaternions
             
             ### Get rotation axis
             ### Desde aca podria ser copiado
-            otv_x, otv_y, otv_z = obj_target_vector
-            obj_target_vector_xyz = [otv_x, otv_y, otv_z ]
-            obj_target_vector_xy = [otv_x, otv_y, 0]
+            
+            
             
             rotation_axis_tilt = cross_product_3d(obj_target_vector_xyz, obj_target_vector_xy)
             
@@ -982,6 +1005,9 @@ def dot_product(vector1, vector2):
     for i in range(3):
         result += vector1[i] * vector2[i]
     return result
+
+def flip_vector(vector):
+    return [-coord for coord in vector]
 
 def reset_world_matrix(obj):
     
