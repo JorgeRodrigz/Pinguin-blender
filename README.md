@@ -4,20 +4,17 @@ Pinguin is a Blender add-on that allows you to create meshes from your image cut
 
 ## Adjustments
 
+### Cutout to mesh panel
 #### Create
-
 After selecting your settings press this button!
 
 #### Directory
-
 Pick the folder where the cutouts you want to convert are stored. The addon will only process files that are in png format. 
 
 #### Mesh Height
-
 Choose a desired height and the meshes will be generated to match it after converting your images.
 
 #### Orient Vertical 
-
 Toggle to generate meshes in an upright position.
 
 #### Fast / Detailed

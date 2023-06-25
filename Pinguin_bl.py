@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Pinguin",
     "author": "Jorge Rodriguez <jorgeandresarq+dev@gmail.com>",
-    "version": (3, 2, 4),
+    "version": (3, 3, 0),
     "blender": (2, 80, 0),
     "location": "Operator Search",
     "description": "Takes cutout images(png format) and turns them into a mesh in the 3D Space",
@@ -45,6 +45,10 @@ try:
 except:
     subprocess.check_call([sys.executable, '-m', 'pip', 'install',"numpy"])
     import numpy as np 
+
+class NotFacingTowardsError(Exception):
+    "Raised when the tilt operation is "
+    pass
 
 
 class PinguinProperties(bpy.types.PropertyGroup):
@@ -361,7 +365,7 @@ class TRANSFORM_OT_face_towards_tilt(bpy.types.Operator):
         for obj in selected_objects:
             
             bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-            # 3 Get object location
+        # 3 Get object location
             obj_location = obj.location
             obj_normal_vector = get_first_face_normal(obj)
             obj_target_vector = target_object_location - obj_location
@@ -369,57 +373,82 @@ class TRANSFORM_OT_face_towards_tilt(bpy.types.Operator):
             otv_x, otv_y, otv_z = obj_target_vector
             obj_target_vector_xyz = [otv_x, otv_y, otv_z]
             obj_target_vector_xy = [otv_x, otv_y, 0]
-            ### Get rotation angles
+            
+        # 4 Get rotation angles
             # *the tilt_angle_radians (this is projected in the rotation plane)
             xy_angle_radians, tilt_angle_radians, azimut_angle_radians = get_align_angle(obj_normal_vector, obj_target_vector)
+            
+            #Cut operation alltogether if the xy_angle is different from 0
+            print(f"if {xy_angle_radians} > {math.radians(1)}")
+            if abs(xy_angle_radians) > math.radians(1):
+                raise NotFacingTowardsError ("Execute Face Towards operator first")
+            
             ### Correct Azimut angle if is below object
             if obj_location[2] < target_object_location [2]:
                 azimut_angle_radians *= -1
                 tilt_angle_radians *= -1
             
-            print("_-_------_----_----_-----___--_-_-----","\n"
+            
+            print("\n","_-_------_----_----_-----___--_-_-----","\n"
                 , "xy_angle: ", math.degrees(xy_angle_radians), "\n",
                 "azimut_angle: ", math.degrees(azimut_angle_radians), "\n",
                 "tilt angle: ", math.degrees(tilt_angle_radians), "\n")
             
 
-            ### Evaluate if it is facing backwards
-            print(f"Azimut::{math.degrees(azimut_angle_radians)} + Tilt::{math.degrees(tilt_angle_radians)} = {abs(math.degrees(azimut_angle_radians) + math.degrees(tilt_angle_radians))}")
+        # 5 Evaluate if it is facing backwards and correct the angle to be only if it is facing towards our object
+            #print(f"Azimut::{math.degrees(azimut_angle_radians)} + Tilt::{math.degrees(tilt_angle_radians)} = {abs(math.degrees(azimut_angle_radians) + math.degrees(tilt_angle_radians))}")
             
             if abs(xy_angle_radians) > (math.pi/2):
-                print("is facing backwards")
-                print("tar", math.degrees(tilt_angle_radians))
+                #print("is facing backwards")
+                # print("tar", math.degrees(tilt_angle_radians))
             ## check rotation direction to tilt angle to calculate the tilt angle in the range [0,360] currently [0,180] because of the dot product/cos_angle
-                print("obj_target_vector",obj_target_vector_xyz)
+                #print("obj_target_vector",obj_target_vector_xyz)
                 obj_target_vector_flipped_normalized = normalize_vector(flip_vector(obj_target_vector_xyz))
             ## Compare z components of the obj_target_vector_flipped_normalized vs the object normal vector projected (this is projected in the rotation plane)
                 
                 projected_obj_normal_vector_onto_target_plane = normalize_vector(project_vector_onto_plane(obj_normal_vector,obj_target_vector_xyz, obj_target_vector_xy))
                 z_tar = projected_obj_normal_vector_onto_target_plane[2]
                 z_otvfn = obj_target_vector_flipped_normalized[2]
-                print("z_tar", z_tar, "z_otvfn", z_otvfn)
+                #print("z_tar", z_tar, "z_otvfn", z_otvfn)
             
                 if abs(z_otvfn) > abs(z_tar):
                 # Transform axis to a 360 degree rotation format
-                    print("wheee have to format the angel wheee: ",math.degrees(tilt_angle_radians))
+                    #print("wheee have to format the angel wheee: ",math.degrees(tilt_angle_radians))
                     if tilt_angle_radians < 0:
                         tilt_angle_radians = (-2*math.pi) - tilt_angle_radians
                     elif tilt_angle_radians > 0:
                         tilt_angle_radians = (2*math.pi) - tilt_angle_radians
-                    print("now formated", math.degrees(tilt_angle_radians))
+                    #print("now formated", math.degrees(tilt_angle_radians))
                 
-                # Correct rotation direction 
+                # Correct rotation direction (pendin)
                 tilt_angle_radians_after_xy_alignment = ((math.pi) + (2 * abs(azimut_angle_radians)) - abs(tilt_angle_radians))
-                print("taraxya", math.degrees(tilt_angle_radians_after_xy_alignment))
-                
-            # 4 Rotate tilt  using quaternions
+                tilt_angle_radians = tilt_angle_radians_after_xy_alignment
             
-            ### Get rotation axis
-            ### Desde aca podria ser copiado
+            print("5 tilt_angle_radians after xy alignment:", math.degrees(tilt_angle_radians))    
+        # 6 Get rotation axis
+            rotation_axis_tilt = normalize_vector(cross_product_3d(obj_target_vector_xyz, obj_target_vector_xy))   
+            # print("6 rotation axis tilt: ",rotation_axis_tilt)
             
+        # 7 Analize and correct tilt angle direction
+            # Define the rotation angle in radians
+            obj_target_vector_norm = normalize_vector(obj_target_vector_xyz)
+            # pnj_normal_vector is already normalized
             
+            print(f"if {obj_target_vector_norm[2]} > {obj_normal_vector[2]}")
+            if obj_target_vector_norm[2] > obj_normal_vector[2]:
+                print(f"i  have to rotate up by {math.degrees(tilt_angle_radians)}")
+                rotation_angle_radians = tilt_angle_radians
+            elif  obj_target_vector_norm[2] < obj_normal_vector[2]:
+                print(f"i have to rotate down nou {math.degrees(tilt_angle_radians)}")
+                rotation_angle_radians = tilt_angle_radians * -1
             
-            rotation_axis_tilt = cross_product_3d(obj_target_vector_xyz, obj_target_vector_xy)
+        # 8 Rotate tilt  using quaternions
+            # Create the quaternion rotation
+            quaternion_rotation = Quaternion(rotation_axis_tilt, rotation_angle_radians)
+            # Apply the rotation to the object
+            obj.rotation_mode = 'QUATERNION'
+            obj.rotation_quaternion = quaternion_rotation
+            
             
         if True: 
             print("Tilt Working")  
@@ -962,10 +991,12 @@ def get_align_angle(normal_vector, target_vector):
     
     return xy_angle_radians, tilt_angle_radians, azimut_angle_radians
     
-    
 
 def project_vector_onto_plane(vector_to_project, vector1, vector2):
-
+    # Avoids the same vector zero div error given that we 
+    # are always projecting into a vertical plane
+    if vector1 == vector2:
+        vector2[2] += 1
     # Calculate the normal vector of the plane
     normal_vector = cross_product_3d(vector1, vector2)
     # Normalize the normal vector
@@ -980,7 +1011,8 @@ def project_vector_onto_plane(vector_to_project, vector1, vector2):
     return projected_vector
 
 def cross_product_3d(vector1, vector2):
-    
+    if vector1 == vector2:
+        vector2[2] += 1
     #### algo oscuro esta pasando aca
     """
     print( f"x = {vector1[1]} * {vector2[2]} - {vector1[2]} * {vector2[1]}")
@@ -1024,6 +1056,7 @@ def reset_world_matrix(obj):
     
     ### Return object to original location
     obj.location = (obj_x, obj_y, obj_z)
+
 
 ### Blender_ Register and Unregister Classes   
 def register():
