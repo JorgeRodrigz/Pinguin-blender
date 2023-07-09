@@ -46,7 +46,6 @@ except:
     subprocess.check_call([sys.executable, '-m', 'pip', 'install',"numpy"])
     import numpy as np 
 
-print("_________HOLY HOLES__________")
 ### ERRRORS ###
 class NotFacingTowardsError(Exception):
     "Raised when the tilt operation is "
@@ -182,16 +181,12 @@ class MESH_OT_pinguin_create(bpy.types.Operator):
             hierarchy_list.append(hierarchy)
             dimension_list.append(dimensions)
             
-            print(f"contours len:{len(contour)}")
-            
             #Returns a simple list of the parents and holes
             contour_parent = []
             for contours_hierarchy in hierarchy:
                 for each_contour_hierarchy in contours_hierarchy:
                     contour_parent.append(each_contour_hierarchy[3])
             contour_parent_list.append(contour_parent)
-            
-            print("contour_parent_list",contour_parent_list)
 
         
         ### 4. Formats nparrya(contours) into simpler list 
@@ -281,8 +276,6 @@ class MESH_OT_pinguin_create(bpy.types.Operator):
                 ### THATS WHAT I AM TAKING ABOUT, THATS WHY HE IS THE MVP, THATS WHY HE IS THE GOAT!
                 ### Not only returns a beautiful mesh but also unwrapps it Lets gooo!
 
-                print(f"verts_set_len{len((verts_set[image_index]))}, edge_set_len:{len((edge_set[image_index]))}, and parent list:{contour_parent_list[image_index]}")
-                
                 ### get only external edges
                 external_verts_set = []
                 external_edge_set = []
@@ -296,8 +289,6 @@ class MESH_OT_pinguin_create(bpy.types.Operator):
                         external_verts_set.append(image_verts_set[(parent_index)])
                         external_edge_set.append(image_edge_set[(parent_index)])
                     parent_index += 1
-                    
-                print(f"ext_verts_set_len{len((external_verts_set))}, ext_edge_set_len:{len(external_edge_set)}, and parent list:{contour_parent_list[image_index]}")
                 
                 #create meshes from external contours
                 mesh_from_contours_info(external_verts_set, external_edge_set, extents_set[image_index], obj_name_set[image_index])
@@ -315,7 +306,7 @@ class MESH_OT_pinguin_create(bpy.types.Operator):
         if create_holes == True:
             for image_index in range(len(verts_set)):
                 ### Get hierarchies list based on contour parent list
-                print("CPL",contour_parent_list[image_index])
+                #print("CPL",contour_parent_list[image_index])
                 cpl = contour_parent_list[image_index]
                 hierarchy_level_list = []
                 for parent_index in range(len(cpl)):
@@ -326,17 +317,17 @@ class MESH_OT_pinguin_create(bpy.types.Operator):
                         cpl_parent = cpl[parent_index]
                         hierarchy_level += 1
                     hierarchy_level_list.append(hierarchy_level)
-                print("HLL",hierarchy_level_list)
+                #print("HLL",hierarchy_level_list)
                 
                 ### Get a set of the values in the hierarchy_level_list
                 hierarchy_level_set = set(hierarchy_level_list)
-                print("HLS", hierarchy_level_set)
+                #print("HLS", hierarchy_level_set)
                 ### Get the indexes of the filled hierarchies present
                 pair_fill_void_indexes =[]
                 for fill_void_index in hierarchy_level_set:
                     if  fill_void_index % 2 == 0 or fill_void_index == 0:
                         pair_fill_void_indexes.append(fill_void_index)
-                print("PFVI",pair_fill_void_indexes)
+                #print("PFVI",pair_fill_void_indexes)
                 
                 separate_mesh_names = []
 
@@ -398,12 +389,11 @@ class MESH_OT_pinguin_create(bpy.types.Operator):
                     ### Append mesh name to a list to then select that list and join them all
                     separate_mesh_names.append(obj_name_set[image_index]+f"_H{fill_hierearchy_index}")
                 
+                ### Join Parts
                 bpy.ops.object.select_all(action='DESELECT')    
-                print("SMN",separate_mesh_names)
                 for mesh_part_name in separate_mesh_names:
                     part_to_select = bpy.data.objects.get(mesh_part_name)
-                    part_to_select.select_set(True)
-                    
+                    part_to_select.select_set(True)    
                 bpy.ops.object.join()
                 
                 ### Rename without suffixes
