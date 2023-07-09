@@ -1,8 +1,8 @@
 bl_info = {
     "name": "Pinguin",
     "author": "Jorge Rodriguez <jorgeandresarq+dev@gmail.com>",
-    "version": (3, 5, 0),
-    "blender": (3, 6, 0),
+    "version": (3, 3, 0),
+    "blender": (2, 80, 0),
     "location": "Operator Search",
     "description": "Takes cutout images(png format) and turns them into a mesh in the 3D Space",
     "warning": "",
@@ -46,7 +46,6 @@ except:
     subprocess.check_call([sys.executable, '-m', 'pip', 'install',"numpy"])
     import numpy as np 
 
-print("_________HOLY HOLES__________")
 ### ERRRORS ###
 class NotFacingTowardsError(Exception):
     "Raised when the tilt operation is "
@@ -78,13 +77,6 @@ class PinguinProperties(bpy.types.PropertyGroup):
         description="Toogle to stand up the meshes",
         default=True
         )
-    
-    pinguin_holes : bpy.props.BoolProperty(
-        name = "Holes", 
-        description="Toogle to create a mesh with holes",
-        default=False
-        )
-    
     
     pinguin_cv_algorithm : bpy.props.EnumProperty(
         name = "Contour Algorithm",
@@ -122,9 +114,7 @@ class MESH_OT_pinguin_create(bpy.types.Operator):
         directory = context.scene.my_tool.pinguin_folder
         mesh_height = context.scene.my_tool.pinguin_mesh_height
         orient_vertical = context.scene.my_tool.pinguin_vertical_orient
-        create_holes = context.scene.my_tool.pinguin_holes
         chain_aproximation_method = context.scene.my_tool.pinguin_cv_algorithm
-        
         # "CHAIN_APPROX_SIMPLE" or "CHAIN_APROX_NONE"   
 
         proxie_collection = "proxie_collection_pinguin"
@@ -172,28 +162,13 @@ class MESH_OT_pinguin_create(bpy.types.Operator):
         contours_list=[]
         hierarchy_list=[]
         dimension_list=[]
-        # This one is used if holes are needed
-        contour_parent_list=[]
-        
-        
+
         for opc_path_ in opc_paths:
             contour,hierarchy,dimensions = alpha_channel_to_contour(opc_path_,chain_aproximation_method)
             contours_list.append(contour)
             hierarchy_list.append(hierarchy)
             dimension_list.append(dimensions)
-            
-            print(f"contours len:{len(contour)}")
-            
-            #Returns a simple list of the parents and holes
-            contour_parent = []
-            for contours_hierarchy in hierarchy:
-                for each_contour_hierarchy in contours_hierarchy:
-                    contour_parent.append(each_contour_hierarchy[3])
-            contour_parent_list.append(contour_parent)
-            
-            print("contour_parent_list",contour_parent_list)
 
-        
         ### 4. Formats nparrya(contours) into simpler list 
         formated_images_contours = []
         
@@ -227,7 +202,7 @@ class MESH_OT_pinguin_create(bpy.types.Operator):
         ### 8. Asignación de vertices    
         verts_set = scaled_contours
 
-        ### 9. Creacion de Edges
+        ### 9. Creacion de Edges _ Creacion de Faces es inutil porque ya no se usa pero la dejo igual
         edge_set = []
         face_set = []
 
@@ -251,6 +226,7 @@ class MESH_OT_pinguin_create(bpy.types.Operator):
         extents_set = []
 
         for dim_index in range(len(dimension_list)):
+           
             get_size = dimension_list[dim_index]
             img_height, img_width, duntknowwhatitdoes = get_size
             scale_factor = mesh_height/img_height
@@ -260,164 +236,50 @@ class MESH_OT_pinguin_create(bpy.types.Operator):
             extents_set.append(extent_verts)
             
         print("🐦 Extents are ready 🦚")
+            
+        ### 12.Bl Set any amount of Viewports to Top Orthographic views_ Not Necesary, with new uv unwrap method
         
+        """
+        for area in bpy.context.screen.areas:
+            if area.type == "VIEW_3D":
+                override = bpy.context.copy()
+                override["area"] = area
+                bpy.ops.view3d.view_axis(override, type='TOP', align_active=False) 
+                if  area.spaces.active.region_3d.is_perspective:
+                    bpy.ops.view3d.view_persportho(override)
+        """
         ### 13.Bl Creates a new proxie_collection to store_ resultant meshes temporarly 
         collections = bpy.data.collections
         pinguin_collection_name = proxie_collection
-
+               
         if pinguin_collection_name in collections:
             pinguin_collection = bpy.data.collections.get(pinguin_collection_name)
         else:       
             pinguin_collection = bpy.data.collections.new(pinguin_collection_name)
             bpy.context.scene.collection.children.link(pinguin_collection)       
         
-        
+             
         ### 14.Bl Meshes from contour sets
         print("🐦 Creating Meshes 🦚", "\n")
         
-        if create_holes == False:
-            for image_index in range(len(verts_set)):
-                
-                ### THATS WHAT I AM TAKING ABOUT, THATS WHY HE IS THE MVP, THATS WHY HE IS THE GOAT!
-                ### Not only returns a beautiful mesh but also unwrapps it Lets gooo!
-
-                print(f"verts_set_len{len((verts_set[image_index]))}, edge_set_len:{len((edge_set[image_index]))}, and parent list:{contour_parent_list[image_index]}")
-                
-                ### get only external edges
-                external_verts_set = []
-                external_edge_set = []
-                
-                image_verts_set = verts_set[image_index]
-                image_edge_set = edge_set[image_index]
-                
-                parent_index = 0
-                for parent in (contour_parent_list[image_index]):   
-                    if parent == -1:
-                        external_verts_set.append(image_verts_set[(parent_index)])
-                        external_edge_set.append(image_edge_set[(parent_index)])
-                    parent_index += 1
-                    
-                print(f"ext_verts_set_len{len((external_verts_set))}, ext_edge_set_len:{len(external_edge_set)}, and parent list:{contour_parent_list[image_index]}")
-                
-                #create meshes from external contours
-                mesh_from_contours_info(external_verts_set, external_edge_set, extents_set[image_index], obj_name_set[image_index])
-                mesh_name = obj_name_set[image_index]
-                material_to_mesh(mesh_name, directory)
-                
-                ### Moves Objects into proxie collection and removes it from previews Collections
-                selected_object = bpy.context.active_object
-                for obj in bpy.context.selected_objects:
-                    for other_col in obj.users_collection:
-                        other_col.objects.unlink(obj)
-                    if obj.name not in pinguin_collection.objects:
-                        pinguin_collection.objects.link(obj) 
         
-        if create_holes == True:
-            for image_index in range(len(verts_set)):
-                ### Get hierarchies list based on contour parent list
-                print("CPL",contour_parent_list[image_index])
-                cpl = contour_parent_list[image_index]
-                hierarchy_level_list = []
-                for parent_index in range(len(cpl)):
-                    cpl_parent = cpl[parent_index]
-                    hierarchy_level = 0
-                    while cpl_parent != -1:
-                        parent_index = cpl_parent
-                        cpl_parent = cpl[parent_index]
-                        hierarchy_level += 1
-                    hierarchy_level_list.append(hierarchy_level)
-                print("HLL",hierarchy_level_list)
-                
-                ### Get a set of the values in the hierarchy_level_list
-                hierarchy_level_set = set(hierarchy_level_list)
-                print("HLS", hierarchy_level_set)
-                ### Get the indexes of the filled hierarchies present
-                pair_fill_void_indexes =[]
-                for fill_void_index in hierarchy_level_set:
-                    if  fill_void_index % 2 == 0 or fill_void_index == 0:
-                        pair_fill_void_indexes.append(fill_void_index)
-                print("PFVI",pair_fill_void_indexes)
-                
-                separate_mesh_names = []
-
-                for fill_hierearchy_index in pair_fill_void_indexes:
-                    void_hierearchy_index = fill_hierearchy_index + 1
-                    
-                    ### Store valid contours 
-                    valid_fill_verts = []
-                    valid_fill_edges = []
-                    valid_void_verts = []
-                    valid_void_edges = []
-                    
-                    image_verts_set = verts_set[image_index]
-                    image_edge_set = edge_set[image_index]
-
-                    for hierarchy_level_index in range(len(hierarchy_level_list)):
-                        if hierarchy_level_list[hierarchy_level_index] == fill_hierearchy_index:
-                            valid_fill_verts.append(image_verts_set[hierarchy_level_index])
-                            valid_fill_edges.append(image_edge_set[hierarchy_level_index])
-                        elif hierarchy_level_list[hierarchy_level_index] == void_hierearchy_index:
-                            ### Agarra el errror si no hay un mesh de resta
-                            try:
-                                valid_void_verts.append(image_verts_set[hierarchy_level_index])
-                                valid_void_edges.append(image_edge_set[hierarchy_level_index])
-                            except:
-                                pass
-                    ### Build fill meshes and append material
-                    mesh_from_contours_info(valid_fill_verts, valid_fill_edges, extents_set[image_index], obj_name_set[image_index]+f"_H{fill_hierearchy_index}")
-                    material_name = obj_name_set[image_index]
-                    material_to_mesh(material_name, directory)
-                    
-                    ### This catches in case the pair has no void info
-                    
-                    ### This if catches if there is a fill witouht a void
-                    if valid_void_edges != []:
-                    ### Build void meshes + solidify
-                        mesh_from_contours_info(valid_void_verts, valid_void_edges, extents_set[image_index], obj_name_set[image_index]+f"_V{fill_hierearchy_index}")
-                        bpy.ops.object.modifier_add(type='SOLIDIFY')
-                        bpy.context.object.modifiers["Solidify"].offset = 0
-                        bpy.context.object.modifiers["Solidify"].thickness = 0.5
-                        bpy.ops.object.modifier_apply(modifier="Solidify")
-
-                        ###  Boolean diference between fill and void
-                        bool_object = bpy.data.objects.get(obj_name_set[image_index]+f"_H{fill_hierearchy_index}")
-                        bool_modifier = bool_object.modifiers.new(name="Boolean", type='BOOLEAN')
-                        bool_modifier.operation = 'DIFFERENCE'  # Choose the desired operation (DIFFERENCE, UNION, INTERSECT)
-                        bool_modifier.object = bpy.data.objects[obj_name_set[image_index]+f"_V{fill_hierearchy_index}"]
-                        
-                        bpy.ops.object.select_all(action='DESELECT')
-                        object_to_select = bpy.data.objects.get(obj_name_set[image_index]+f"_H{fill_hierearchy_index}")
-                        object_to_select.select_set(True)
-                        bpy.context.view_layer.objects.active = object_to_select
-                        bpy.ops.object.modifier_apply(modifier=bool_modifier.name)
-
-                        ### Delete void Object
-                        object_to_delete = bpy.data.objects.get(obj_name_set[image_index]+f"_V{fill_hierearchy_index}")
-                        bpy.data.objects.remove(object_to_delete, do_unlink=True)
-                        
-                    ### Append mesh name to a list to then select that list and join them all
-                    separate_mesh_names.append(obj_name_set[image_index]+f"_H{fill_hierearchy_index}")
-                
-                bpy.ops.object.select_all(action='DESELECT')    
-                print("SMN",separate_mesh_names)
-                for mesh_part_name in separate_mesh_names:
-                    part_to_select = bpy.data.objects.get(mesh_part_name)
-                    part_to_select.select_set(True)
-                    
-                bpy.ops.object.join()
-                
-                ### Rename without suffixes
-                selected_objects = bpy.context.selected_objects
-                selected_object = selected_objects[0]
-                selected_object.name = obj_name_set[image_index]
-                
-                selected_object = bpy.context.active_object
-                for obj in bpy.context.selected_objects:
-                    for other_col in obj.users_collection:
-                        other_col.objects.unlink(obj)
-                    if obj.name not in pinguin_collection.objects:
-                        pinguin_collection.objects.link(obj) 
-                    
+        for image_index in range(len(verts_set)):
+            
+            ### THATS WHAT I AM TAKING ABOUT, THATS WHY HE IS THE MVP, THATS WHY HE IS THE GOAT!
+            ### Not only returns a beautiful mesh but also unwrapps it Lets gooo!
+ 
+            mesh_from_contours_info(verts_set[image_index], edge_set[image_index], extents_set[image_index], obj_name_set[image_index])
+            mesh_name = obj_name_set[image_index]
+            material_to_mesh(mesh_name, directory)
+            
+            ### Moves Objects into proxie collection and removes it from previews Collections
+            selected_object = bpy.context.active_object
+            for obj in bpy.context.selected_objects:
+                for other_col in obj.users_collection:
+                    other_col.objects.unlink(obj)
+                if obj.name not in pinguin_collection.objects:
+                    pinguin_collection.objects.link(obj) 
+                          
         ### 15 Array Meshes in collection in a matrix
         bpy.context.scene.cursor.location = Vector((x_cursor,y_cursor,z_cursor))
         organize_objects(pinguin_collection)
@@ -434,7 +296,7 @@ class MESH_OT_pinguin_create(bpy.types.Operator):
         ### 16.Bl Creates a new final_collection to store_meshes
         collections = bpy.data.collections
         final_collection_name = final_collection
-        
+               
         if final_collection_name in collections:
             final_pinguin_collection = bpy.data.collections.get(final_collection_name)
         else:       
@@ -490,6 +352,7 @@ class TRANSFORM_OT_face_towards(bpy.types.Operator):
             bpy.ops.object.transform_apply(location=False, rotation=True, scale=False) 
             
         return{"FINISHED"}
+
 
 class TRANSFORM_OT_face_towards_tilt(bpy.types.Operator):
     """Face cutouts towards an object"""
@@ -616,13 +479,11 @@ class VIEW_PT_pinguin_create(bpy.types.Panel):
     
         col = self.layout.column(align=True)
         row = col.row(align=False)
-        col.prop(context.scene.my_tool, "pinguin_folder")
+        row.prop(context.scene.my_tool, "pinguin_folder")
         row.scale_x = .5
-        
-        col = self.layout.column(align=True)
-        row = col.row(align=True)
         row.prop(context.scene.my_tool, "pinguin_vertical_orient")
-        row.prop(context.scene.my_tool, "pinguin_holes")
+
+        col = self.layout.column(align=True)
         col.prop(context.scene.my_tool, "pinguin_mesh_height")
         row = col.row(align=True)    
         row.prop(context.scene.my_tool, "pinguin_cv_algorithm")
@@ -732,9 +593,9 @@ def alpha_channel_to_contour(opacity_map, algorithm_set_toogle):
     ret, thresh = cv.threshold(gray, 127, 255, cv.THRESH_BINARY) #200 for contract #100 For expand ###200-Contrats
     ### Decide que algoritmo usar para encontrar contornos    
     if "SIMPLE" in algorithm_set_toogle:
-        contours, hierarchies = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE) ### Cambiar CHAIN_APROX_NONE o CHAIN_APPROX_SIMPLE
+        contours, hierarchies = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE) ### Cambiar CHAIN_APROX_NONE o CHAIN_APPROX_SIMPLE
     elif "NONE" in algorithm_set_toogle:
-        contours, hierarchies = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_NONE) ### Cambiar CHAIN_APROX_NONE o CHAIN_APPROX_SIMPLE 
+        contours, hierarchies = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE) ### Cambiar CHAIN_APROX_NONE o CHAIN_APPROX_SIMPLE 
     ###Extrae las dimensiones 
     dimensions = image_opacity_contour.shape
         
@@ -847,14 +708,11 @@ def dim_to_extent_verts(dimension):
     return extents
 
 ### def_toma la informacion de vertices aristas y caras y produce las mallas
-def mesh_from_contours_info(verts_set = [], 
-                            edges_set = [], 
-                            extent_set = [],
-                            mesh_name = "file_has_no-name"):
+def mesh_from_contours_info(verts_set = [], edges_set = [], extent_set = [],mesh_name = "file_has_no-nam"):
 
     object_set = []
     extents_edges = [[0,1],[1,3],[3,2],[2,0]]
-    
+     
     ### Deselect all selected objects in the scene
     bpy.ops.object.select_all(action='DESELECT')
         
@@ -881,7 +739,7 @@ def mesh_from_contours_info(verts_set = [],
         try:
             each_vert = verts_set[contours_index]
         except:
-            print("no vertices recognized")
+            sys.exit("no vertices recognized")
             
         try:
             each_edge = edges_set[contours_index]
